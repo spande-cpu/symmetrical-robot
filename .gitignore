@@ -51,6 +51,9 @@ rsconnect/
 # OSX files
 .DS_Store
 
+# Project files
+My Website.Rproj
+
 # IDEs
 .idea/
 
