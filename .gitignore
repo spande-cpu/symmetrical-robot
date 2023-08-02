@@ -48,5 +48,17 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# R files
+# OSX files
 .DS_Store
+
+# IDEs
+.idea/
+
+# Hugo
+resources/
+public/
+jsconfig.json
+node_modules/
+go.sum
+.hugo_build.lock
+.Rproj.user
