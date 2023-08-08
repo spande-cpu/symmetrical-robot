@@ -50,6 +50,7 @@ rsconnect/
 
 # OSX files
 .DS_Store
+Thumbs.db
 
 # Project files
 My Website.Rproj
