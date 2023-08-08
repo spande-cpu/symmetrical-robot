@@ -1,0 +1,231 @@
+---
+title: Regression and the Omitted Variable Bias
+author: admin
+date: '2023-08-01'
+slug: regression-and-the-omitted-variable-bias
+categories:
+  - Data Science
+tags:
+  - Data Science
+subtitle: ''
+summary: ''
+authors: []
+lastmod: '2023-08-01T15:03:31+01:00'
+featured: no
+image:
+  caption: ''
+  focal_point: ''
+  preview_only: no
+projects: []
+---
+
+
+
+<div id="introduction" class="section level2">
+<h2>Introduction</h2>
+<p>When estimating a regression model, we are often interested in how a change in level of a particular variable (or treatment) affects our outcome of interest.</p>
+<p>We are looking to estimate the distribution of some random variable <span class="math inline">\(Y\)</span> as some function, <span class="math inline">\(\textit{f}(\bf{X})\)</span> using some set of linear predictors, <span class="math inline">\(\textbf{X}\)</span> that we suspect might cause <span class="math inline">\(Y\)</span>. The core of the the estimation problem is the identification of which subset of all <span class="math inline">\(p\)</span>, possible predictors from <span class="math inline">\(X = (x_1,x_2,...,x_p)\)</span> to include in our model. Often, the specific predictors we choose are based on substantive considerations made during the definition of our research problem and some form of literature review and together, these aspects tend to define the design an effective experiment to test our proposition against a null-hypothesis (<span class="math inline">\(H_0\)</span>).</p>
+<p>However, in a world of many possibilities, one of the challenges that a researcher must beware is the omission of variables that might be (causally) related to both the outcome and focal predictor in our analysis which can seriously confound the conclusions drawn from a linear-model.</p>
+</div>
+<div id="correlation-causation-do-storks-deliver-babies" class="section level2">
+<h2>Correlation != Causation: Do storks deliver babies?</h2>
+<p>Suppose we are looking to question the age old folk-tale of whether storks bring new-born babies to their doting parents – presumably, because we are a little bit bored and feeling somewhat cynical or like behavioural maximizers, prefer to be data-driven having been given such a tantalizingly testable proposition. Perhaps from a similar starting point, although probably a more pedagogically grounded motivation, <a href="http://www.brixtonhealth.com/storksBabies.pdf">Mathews (2000)</a> presents an analysis of some real statistical data across a sample of European countries where large stork-populations mean that agencies such as the <a href="">Royal Society for the Protection of Birds</a> painstakingly maintain records on their numbers.</p>
+<p>Mathew’s analysis shows that in fact, the number of breeding stork-pairs that are found in these countries does indeed relate to human birth-rates and while the correlation is moderate (<span class="math inline">\(\rho = .62\)</span>), it is statistically significant (<span class="math inline">\(p = .008\)</span>) at the <span class="math inline">\(\alpha = 0.05\)</span> or <span class="math inline">\(95\)</span>% confidence-level, meeting the minimal convention for (sufficient) statistical evidence in most published academic research.</p>
+<p>Let’s try and reproduce the results in Matthew’s paper.</p>
+<pre class="r"><code># For tibbles, %&gt;% and everything nice.
+library(tidyverse)
+
+# Stork data from Matthews (2000)
+storks &lt;- tribble(
+ ~Country, ~Area, ~Storks, ~Humans, ~BirthRate,
+ &quot;ALB&quot;,    28750,   100,     3.2,     83,
+ &quot;AUT&quot;,    83860,   300,     7.6,     87,
+ &quot;BEL&quot;,    30520,     1,     9.9,    118,
+ &quot;BGR&quot;,   111000,  5000,     9.0,    117,
+ &quot;DNK&quot;,    43100,     9,     5.1,     59,
+ &quot;FRA&quot;,   544000,   140,    56.0,    774,
+ &quot;DEU&quot;,   357000,  3300,    78.0,    901,
+ &quot;GRC&quot;,   132000,  2500,    10.0,    106,
+ &quot;NLD&quot;,    41900,     4,    15.0,    188,
+ &quot;HUN&quot;,    93000,  5000,    11.0,    124,
+ &quot;ITA&quot;,   301280,     5,    57.0,    551,
+ &quot;POL&quot;,   312680, 30000,    38.0,    610,
+ &quot;PRT&quot;,    92390,  1500,    10.0,    120,
+ &quot;ROU&quot;,   237500,  5000,    23.0,    367,
+ &quot;ESP&quot;,   504750,  8000,    39.0,    439,
+ &quot;CHE&quot;,    41290,   150,     6.7,     82,
+ &quot;TUR&quot;,   779450, 25000,    56.0,   1576
+)
+
+# Plot Pair-wise Correlations
+storks %&gt;%
+  select_if(is.numeric) %&gt;%
+  GGally::ggpairs() +
+  theme_bw() +
+  theme(plot.title = element_text(face = &quot;bold&quot;)) + 
+  ggtitle(&quot;Pairwise Correlations in Matthew&#39;s (2000) Stork Data&quot;) </code></pre>
+<p><img src="{{< blogdown/postref >}}index.en_files/figure-html/data-1.png" width="672" /></p>
+<ul>
+<li>The no. of breeding stork-pairs appear to moderately correlate with human birthrates – and this relationship is significant at <span class="math inline">\(\alpha=.05\)</span>, very surprising indeed.</li>
+<li>But this chart is information dense, it tells us a number of additional things.
+<ul>
+<li>Birth rates seem to correlate positively with both, the Human population and land area of these countries – i.e. in addition to the positive pair-wise relationship between the no. of breeding stork-pairs and human birth-rates.</li>
+<li>Perhaps not so surprisingly, the no. of stork-pairs is also positively correlated with land area.</li>
+<li>The distributions of the variables in our data are positively skewed again, not surprising given the limited sample-size at our disposal.</li>
+</ul></li>
+<li>Here’s what the linear relationship between <code>Area</code>, <code>Humans</code>, <code>Storks</code> – i.e. our <span class="math inline">\(X\)</span> variables and human birth-rates looks like).</li>
+</ul>
+<pre class="r"><code># Faceted GG-Plot 
+storks %&gt;%
+  pivot_longer(Area:Humans, names_to = &quot;x_p&quot;, values_to = &quot;.measurement&quot;) %&gt;%
+  ggplot(aes(.measurement, BirthRate)) + 
+  geom_point() +
+  facet_wrap(vars(x_p), scales = &quot;free_x&quot;) +
+  theme_minimal() +
+  geom_smooth(col = &quot;black&quot;, method = &quot;lm&quot;) +
+  theme(plot.title = element_text(face = &quot;bold&quot;)) + 
+  xlab(expression(&quot;.measurement&quot;)) +
+  ylab(&quot;BirthRate&quot;) +
+  ggtitle(&quot;Linear Relationsip between predictors and human birth-rates&quot;) </code></pre>
+<p><img src="{{< blogdown/postref >}}index.en_files/figure-html/linear-1.png" width="672" /></p>
+</div>
+<div id="lets-get-hypothetical-do-storks-actually-deliver-babies" class="section level2">
+<h2>Let’s Get Hypothetical: Do storks actually deliver babies?</h2>
+<p>What if we had defined our alternative hypothesis as follows:</p>
+<p><span class="math inline">\(\bf{H_A}\)</span>: <em>The no. of breeding stork-pairs in country, i, is positively related to birth-rates</em>.</p>
+<p>We would probably estimate the following model:</p>
+<p><span class="math display">\[\widehat{BirthRate_i} = \beta_0 + \beta_1.Storks_i + \beta_2.Humans_i + \beta_3.Area_i +\epsilon_i\]</span></p>
+<p>Suppose we collected some data to test this proposition against a null hypothesis but for whatever reason, we only collect data on 2-variables, <code>Storks</code> and <code>BirthRate</code>. We would like to estimate this relationship using a linear model of the form:</p>
+<p><span class="math display">\[\widehat{BirthRate_i} = \beta_0 + \beta_1Storks_i + \epsilon_i\]</span></p>
+<p>Since we have the privilege of sufficient data to estimate both models, let’s fit and compare their results.</p>
+<pre class="r"><code># Fit model 1 and model 2
+model1 &lt;- lm(BirthRate ~ Storks, data = storks)
+summary(model1)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = BirthRate ~ Storks, data = storks)
+## 
+## Residuals:
+##    Min     1Q Median     3Q    Max 
+## -478.8 -166.3 -144.9   -2.0  631.1 
+## 
+## Coefficients:
+##              Estimate Std. Error t value Pr(&gt;|t|)   
+## (Intercept) 2.250e+02  9.356e+01   2.405   0.0295 * 
+## Storks      2.879e-02  9.402e-03   3.063   0.0079 **
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## Residual standard error: 332.2 on 15 degrees of freedom
+## Multiple R-squared:  0.3847,	Adjusted R-squared:  0.3437 
+## F-statistic:  9.38 on 1 and 15 DF,  p-value: 0.007898</code></pre>
+<pre class="r"><code>model2 &lt;- lm(BirthRate ~ Storks + Humans + Area, data = storks)
+summary(model2)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = BirthRate ~ Storks + Humans + Area, data = storks)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -317.24  -52.95    2.44   73.89  295.48 
+## 
+## Coefficients:
+##               Estimate Std. Error t value Pr(&gt;|t|)  
+## (Intercept) -4.824e+01  5.172e+01  -0.933   0.3680  
+## Storks       8.965e-03  5.024e-03   1.784   0.0977 .
+## Humans       6.369e+00  2.635e+00   2.417   0.0311 *
+## Area         9.596e-04  3.240e-04   2.962   0.0110 *
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## Residual standard error: 140.3 on 13 degrees of freedom
+## Multiple R-squared:  0.9049,	Adjusted R-squared:  0.8829 
+## F-statistic: 41.23 on 3 and 13 DF,  p-value: 6.644e-07</code></pre>
+<p>Interesting. In both models, the estimate for the impact of the no. of breeding stork-pairs and human birth-rates is wildly different. In fact, when we control for <code>Area</code> and the no. of <code>Humans</code> in these countries, the estimate is nearly 99.1% smaller. Wow, that’s quite a difference.</p>
+<p>Moreover, when examined independently, the correlation between the number of breeding stork pairs and human birth rates is also ‘statistically significant’, in that it attains a p-value of <span class="math inline">\(0.0295\)</span>. Does this mean that the relationship between <code>Storks</code> and <code>BirthRate</code> truly significant, can it be that for every 1000 stork-pairs the human birth rate grows by 28.79 per 1000 people?</p>
+</div>
+<div id="reproducing-the-omitted-variable-bias-with-simulated-data" class="section level2">
+<h2>Reproducing the Omitted Variable Bias with Simulated Data</h2>
+<pre class="r"><code># Reproduce
+set.seed(123)
+N &lt;- 10000
+
+# Fixed Parameters
+c &lt;- 1.5
+e0 &lt;- rnorm(n = N, mean = 0, sd = 1)
+
+# Pairwise-correlations between x1 and Z = (z0, z1, ..., zp)
+rho &lt;- c(0, seq(0.1:1.0, by = .1))
+
+# Focal predictor
+x1 &lt;- rnorm(N, 0, 1)
+
+# Covariates
+z &lt;- tibble()
+for (i in 1:length(rho)) {
+  t &lt;- tibble(
+    z = (rho[i] * x1) + sqrt(1 - rho[i]*rho[i]) * rnorm(n = N, mean = 0, sd = 1),
+    i = i,
+    rho = rho[i]
+  )
+  z &lt;- bind_rows(z, t)
+} 
+Z &lt;- tibble(
+  z0 = z[1:10000, ]$z,
+  z1 = z[10001:20000, ]$z,
+  z2 = z[20001:30000, ]$z,
+  z3 = z[30001:40000, ]$z
+)
+
+# Predictors 
+X &lt;- cbind(x1, Z)
+
+# Outcome
+Y &lt;- c + 0*X$x1 + 1.5*X$z3 + e0
+
+# Model without z
+m1 &lt;- lm(Y ~ x1, data = X)
+# Model with z
+m2 &lt;- lm(Y ~ x1 + z3, data = X)
+
+    
+summary(m1)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = Y ~ x1, data = X)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -6.5918 -1.1815  0.0073  1.1481  6.6159 
+## 
+## Coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)  1.51403    0.01752   86.42   &lt;2e-16 ***
+## x1           0.47328    0.01749   27.06   &lt;2e-16 ***
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## Residual standard error: 1.752 on 9998 degrees of freedom
+## Multiple R-squared:  0.06822,	Adjusted R-squared:  0.06813 
+## F-statistic: 732.1 on 1 and 9998 DF,  p-value: &lt; 2.2e-16</code></pre>
+<pre class="r"><code>summary(m2)</code></pre>
+<pre><code>## 
+## Call:
+## lm(formula = Y ~ x1 + z3, data = X)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -3.8443 -0.6668 -0.0091  0.6749  3.8427 
+## 
+## Coefficients:
+##             Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept) 1.497759   0.009988 149.956   &lt;2e-16 ***
+## x1          0.008187   0.010481   0.781    0.435    
+## z3          1.492993   0.010360 144.110   &lt;2e-16 ***
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## Residual standard error: 0.9987 on 9997 degrees of freedom
+## Multiple R-squared:  0.6972,	Adjusted R-squared:  0.6972 
+## F-statistic: 1.151e+04 on 2 and 9997 DF,  p-value: &lt; 2.2e-16</code></pre>
+</div>
