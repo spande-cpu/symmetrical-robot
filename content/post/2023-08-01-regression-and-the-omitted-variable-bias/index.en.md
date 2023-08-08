@@ -174,6 +174,8 @@ Interesting. In both models, the estimate for the impact of the no. of breeding 
 
 Moreover, when examined independently, the correlation between the number of breeding stork pairs and human birth rates is also 'statistically significant', in that it attains a p-value of `\(0.0295\)`. Does this mean that the relationship between `Storks` and `BirthRate` truly significant, can it be that for every 1000 stork-pairs the human birth rate grows by 28.79 per 1000 people?
 
+Perhaps a more appropriate model to understand this result might look something like this:
+
 ## Reproducing the Omitted Variable Bias with Simulated Data
 
 
@@ -229,4 +231,4 @@ df %>%
   geom_hline(aes(yintercept = 0, linetype = "True Value"))
 ```
 
-<img src="{{< blogdown/postref >}}index.en_files/figure-html/unnamed-chunk-1-1.png" width="672" />
+<img src="{{< blogdown/postref >}}index.en_files/figure-html/simulation-1.png" width="672" />
